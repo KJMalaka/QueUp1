@@ -1,30 +1,49 @@
 /**
- * GET  /api/ticket/[ticketId]  — fetch a single ticket
- * PATCH /api/ticket/[ticketId]  — update ticket status (consultant actions)
- *
- * Used by: consultant dashboard (call next, mark served, no-show)
+ * GET  /api/ticket/[ticketId]  — fetch a single ticket (mock)
+ * PATCH /api/ticket/[ticketId]  — update ticket status (mock, no-op)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getTicket, updateTicketStatus, type TicketStatus } from '@/lib/firestore';
 import { z } from 'zod';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { sendWhatsAppMessage, MSG } from '@/lib/whatsapp';
+
+export const dynamic = 'force-dynamic';
 
 const PatchSchema = z.object({
   status: z.enum(['WAITING', 'CALLED', 'SERVED', 'NO_SHOW', 'CANCELLED']),
 });
+
+// In-memory store for mock tickets issued during this server session
+const mockTickets: Record<string, {
+  ticketId: string; ticketNumber: string; branchId: string;
+  citizenName: string; status: string; category: string;
+  channel: string; queuePositionAtIssue: number; estimatedWait: number;
+  issuedAt: string;
+}> = {};
+
+export function registerMockTicket(ticket: typeof mockTickets[string]) {
+  mockTickets[ticket.ticketId] = ticket;
+}
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   const { ticketId } = await params;
-  const ticket = await getTicket(ticketId);
-  if (!ticket) {
-    return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
-  }
+
+  // Return stored mock ticket, or generate a plausible one for demo links
+  const ticket = mockTickets[ticketId] ?? {
+    ticketId,
+    ticketNumber: 'HA-042',
+    branchId: 'ha-bellville',
+    citizenName: 'Demo User',
+    status: 'WAITING',
+    category: 'SMART_ID',
+    channel: 'QR',
+    queuePositionAtIssue: 12,
+    estimatedWait: 84,
+    issuedAt: new Date().toISOString(),
+  };
+
   return NextResponse.json({ ticket });
 }
 
@@ -49,35 +68,10 @@ export async function PATCH(
     );
   }
 
-  await updateTicketStatus(ticketId, parsed.data.status as TicketStatus);
-
-  // Fire-and-forget: send WhatsApp notification for status changes
-  const newStatus = parsed.data.status;
-  if (newStatus === 'CALLED' || newStatus === 'SERVED' || newStatus === 'CANCELLED') {
-    sendWhatsAppNotification(ticketId, newStatus as TicketStatus).catch(console.error);
+  // Update in-memory mock ticket if it exists
+  if (mockTickets[ticketId]) {
+    mockTickets[ticketId].status = parsed.data.status;
   }
 
   return NextResponse.json({ ok: true });
-}
-
-async function sendWhatsAppNotification(ticketId: string, status: TicketStatus) {
-  // Find the WhatsApp session linked to this ticket
-  const q = query(
-    collection(db, 'whatsappSessions'),
-    where('ticketId', '==', ticketId),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return; // No WhatsApp session → nothing to send
-
-  const session = snap.docs[0].data();
-  const phone: string = session.phone;
-  const ticketNumber: string = session.ticketNumber ?? '';
-  const branchName: string  = session.branchName ?? '';
-
-  if (status === 'CALLED') {
-    await sendWhatsAppMessage(phone, MSG.yourTurn(ticketNumber, branchName));
-  } else if (status === 'CANCELLED') {
-    await sendWhatsAppMessage(phone, MSG.cancelled());
-  }
 }

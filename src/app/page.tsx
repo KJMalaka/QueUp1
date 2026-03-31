@@ -163,7 +163,7 @@ export default function Home() {
           <span className="text-xl font-headline font-extrabold text-foreground">Que</span>
           <span className="text-xl font-headline font-extrabold text-primary">Up</span>
         </div>
-        <p className="text-muted-foreground text-xs">© 2025 QueUp SA. All rights reserved.</p>
+        <p className="text-muted-foreground text-sm">© 2026 QueUp SA. All rights reserved.</p>
       </footer>
     </main>
   );

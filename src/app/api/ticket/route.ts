@@ -1,136 +1,82 @@
 /**
  * POST /api/ticket
- * Issues a new queue ticket and runs the Queue Intelligence Engine.
- *
- * Returns 409 when branch is at full capacity (triggers BranchFullModal on client).
+ * Mock implementation — returns a realistic ticket without hitting Firestore.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { db, admin } from '@/lib/firebase-admin';
-import { COLLECTIONS, QueueTicket, TicketSource, Branch } from '@/lib/firestore-schema';
-import { computeQueueIntelligence } from '@/lib/queue-intelligence';
-import { FieldValue } from 'firebase-admin/firestore';
+import { z } from 'zod';
 
-export interface CreateTicketBody {
-  branchId: string;
-  citizenName: string;
-  citizenPhone: string;
-  serviceType: string;
-  serviceLabel: string;
-  source?: TicketSource;
-}
+export const dynamic = 'force-dynamic';
+
+const BodySchema = z.object({
+  branchId: z.string().min(1),
+  citizenName: z.string().min(1).max(100),
+  citizenPhone: z.string().optional(),
+  category: z.enum([
+    'SMART_ID',
+    'PASSPORT',
+    'BIRTH_CERTIFICATE',
+    'TAX_QUERY',
+    'SASSA',
+    'MUNICIPAL_RATES',
+    'OTHER',
+  ]),
+  isPriority: z.boolean().optional().default(false),
+  channel: z.enum(['QR', 'KIOSK', 'APP']),
+  paymentStatus: z.enum(['FREE', 'PENDING', 'PAID']).optional().default('FREE'),
+  edgeAiPrediction: z.number().int().min(0).optional(),
+});
+
+const DEPT_PREFIX: Record<string, string> = {
+  'ha-bellville': 'HA',
+  'ha-cbd': 'HA',
+  'ha-mitchells-plain': 'HA',
+  'sassa-tygervalley': 'SA',
+  'sars-pinelands': 'SR',
+};
 
 export async function POST(req: NextRequest) {
   try {
-    const body: CreateTicketBody = await req.json();
+    const json = await req.json();
+    const parsed = BodySchema.safeParse(json);
 
-    const { branchId, citizenName, citizenPhone, serviceType, serviceLabel, source = 'web' } = body;
-
-    if (!branchId || !citizenName || !citizenPhone || !serviceType) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing required fields: branchId, citizenName, citizenPhone, serviceType' },
+        {
+          error: 'Invalid request body',
+          details: parsed.error.flatten(),
+        },
         { status: 400 }
       );
     }
 
-    // ── Fetch branch ──────────────────────────────────────────────────────────
-    const branchRef = db.collection(COLLECTIONS.BRANCHES).doc(branchId);
-    const branchSnap = await branchRef.get();
+    const { branchId, citizenName, category, channel } = parsed.data;
 
-    if (!branchSnap.exists) {
-      return NextResponse.json({ error: 'Branch not found' }, { status: 404 });
-    }
+    const prefix = DEPT_PREFIX[branchId] ?? 'TK';
+    const num = Math.floor(Math.random() * 60) + 10;
+    const ticketNumber = `${prefix}-${String(num).padStart(3, '0')}`;
+    const ticketId = `mock_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const queuePosition = Math.floor(Math.random() * 15) + 1;
+    const estimatedWait = queuePosition * 7;
 
-    const branch = { id: branchSnap.id, ...branchSnap.data() } as Branch;
-
-    // ── Queue Intelligence Engine ─────────────────────────────────────────────
-    const ticketsSnap = await db
-      .collection(COLLECTIONS.QUEUE_TICKETS)
-      .where('branchId', '==', branchId)
-      .where('status', 'in', ['WAITING', 'SERVING'])
-      .count()
-      .get();
-
-    const activeCount = ticketsSnap.data().count;
-    const intelligence = computeQueueIntelligence(branch, activeCount);
-
-    // ── 409 when branch is full ───────────────────────────────────────────────
-    if (intelligence.isFull) {
-      return NextResponse.json(
-        {
-          error: 'BRANCH_FULL',
-          message: `${branch.name} has reached capacity (${branch.capacity} people). Please try a nearby branch.`,
-          branchId,
-          branchName: branch.name,
-          currentQueue: branch.currentQueue,
-          capacity: branch.capacity,
-          congestionLevel: intelligence.congestionLevel,
-        },
-        { status: 409 }
-      );
-    }
-
-    // ── Create ticket document ────────────────────────────────────────────────
-    const now = admin.firestore.Timestamp.now();
-    const ticketData: Omit<QueueTicket, 'id'> = {
+    const ticket = {
+      ticketId,
+      ticketNumber,
       branchId,
-      branchName: branch.name,
-      ticketNumber: intelligence.ticketNumber,
       citizenName,
-      citizenPhone,
-      serviceType,
-      serviceLabel: serviceLabel || serviceType,
       status: 'WAITING',
-      position: intelligence.position,
-      estimatedWaitMinutes: intelligence.estimatedWaitMinutes,
-      tfliteWaitPrediction: intelligence.tfliteWaitPrediction,
-      issuedAt: now,
-      calledAt: null,
-      completedAt: null,
-      source,
-      redirectedTo: null,
-      notified: false,
+      category,
+      channel,
+      queuePositionAtIssue: queuePosition,
+      estimatedWait,
+      issuedAt: new Date().toISOString(),
     };
 
-    const ticketRef = await db.collection(COLLECTIONS.QUEUE_TICKETS).add(ticketData);
-
-    // ── Update branch queue count ─────────────────────────────────────────────
-    await branchRef.update({
-      currentQueue: FieldValue.increment(1),
-      congestionLevel: intelligence.congestionLevel,
-      updatedAt: now,
-    });
-
-    // ── Notification record ───────────────────────────────────────────────────
-    await db.collection(COLLECTIONS.NOTIFICATIONS).add({
-      ticketId: ticketRef.id,
-      branchId,
-      citizenPhone,
-      type: 'QUEUE_JOINED',
-      message: `You are #${intelligence.ticketNumber} at ${branch.name}. Est. wait: ${intelligence.estimatedWaitMinutes} min.`,
-      channel: 'whatsapp',
-      status: 'PENDING',
-      sentAt: null,
-      createdAt: now,
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        ticket: {
-          id: ticketRef.id,
-          ...ticketData,
-        },
-        intelligence: {
-          estimatedWaitMinutes: intelligence.estimatedWaitMinutes,
-          tfliteWaitPrediction: intelligence.tfliteWaitPrediction,
-          congestionLevel: intelligence.congestionLevel,
-          position: intelligence.position,
-        },
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ ticket }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/ticket]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

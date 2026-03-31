@@ -1,34 +1,12 @@
 /**
- * POST /api/analytics
- *
- * Writes an analytics snapshot and optionally an Edge AI prediction to Firestore.
- * Called by the Android kiosk tablet after each TFLite inference.
- *
- * Body: {
- *   branchId: string,
- *   queueCount: number,
- *   congestionLevel: "LOW" | "MODERATE" | "HIGH",
- *   prediction?: {
- *     predictedWaitMinutes: number,
- *     confidence: number,
- *     inputs: { hourOfDay: number, dayOfWeek: number, currentQueueSize: number }
- *   }
- * }
- *
- * GET /api/analytics?branchId=xxx
- *
- * Returns historical analytics for a branch (last 200 snapshots).
- * Used by the consultant dashboard charts and AI model retraining.
+ * POST /api/analytics — accepts analytics snapshots (mock, no-op store)
+ * GET  /api/analytics?branchId=xxx — returns mock historical data
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  writeAnalyticsSnapshot,
-  writePrediction,
-  getBranchHistoricalData,
-  type CongestionLevel,
-} from '@/lib/firestore';
 import { z } from 'zod';
+
+export const dynamic = 'force-dynamic';
 
 const PostBodySchema = z.object({
   branchId: z.string().min(1),
@@ -47,6 +25,16 @@ const PostBodySchema = z.object({
     .optional(),
 });
 
+function mockHistory(branchId: string) {
+  const now = Date.now();
+  return Array.from({ length: 24 }, (_, i) => ({
+    branchId,
+    timestamp: new Date(now - (23 - i) * 30 * 60000).toISOString(),
+    queueCount: Math.floor(Math.random() * 40) + 2,
+    congestionLevel: ['LOW', 'LOW', 'MODERATE', 'HIGH'][Math.floor(Math.random() * 4)],
+  }));
+}
+
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -63,20 +51,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { branchId, queueCount, congestionLevel, prediction } = parsed.data;
-
-  await writeAnalyticsSnapshot(branchId, queueCount, congestionLevel as CongestionLevel);
-
-  if (prediction) {
-    await writePrediction({
-      branchId,
-      predictedWaitMinutes: prediction.predictedWaitMinutes,
-      confidence: prediction.confidence,
-      source: 'EDGE_AI',
-      inputs: prediction.inputs,
-    });
-  }
-
   return NextResponse.json({ ok: true }, { status: 201 });
 }
 
@@ -88,6 +62,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'branchId query param required' }, { status: 400 });
   }
 
-  const history = await getBranchHistoricalData(branchId, 200);
-  return NextResponse.json({ history });
+  return NextResponse.json({ history: mockHistory(branchId) });
 }
