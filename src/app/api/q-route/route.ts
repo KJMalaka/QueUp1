@@ -172,7 +172,7 @@ Which branch ID should this citizen go to?`;
 
     try {
       const message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 300,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],

@@ -291,7 +291,7 @@ export default function QDashboard() {
           { slot: nextSlot, expected: nextExpected, actual: nextActual, threshold: Math.round(nextExpected + nextStd * 3) },
         ];
       });
-    }, 4000);
+    }, 8000);
     return () => clearInterval(interval);
   }, []);
 

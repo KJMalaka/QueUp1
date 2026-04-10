@@ -87,7 +87,7 @@ Local timestamp: ${new Date().toISOString()}`;
 
     try {
       const completion = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 220,
         system,
         messages: [{ role: 'user', content: user }],

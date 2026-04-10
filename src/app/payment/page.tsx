@@ -194,6 +194,18 @@ function PaymentScreenContent() {
                   <div className="text-7xl font-headline font-extrabold">B-089</div>
                 </div>
 
+                {selectedBank && (
+                  <div className="flex justify-center">
+                    <Image 
+                      src={selectedBank.logo} 
+                      alt={selectedBank.name} 
+                      width={80} 
+                      height={40} 
+                      className="object-contain"
+                    />
+                  </div>
+                )}
+
                 <div className="text-sm space-y-4 border-t border-white/5 pt-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-0.5">

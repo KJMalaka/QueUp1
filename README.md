@@ -1,9 +1,12 @@
-# Firebase Studio
+# QueUp1 - Smart Queue Management System
 
-This is a NextJS starter in Firebase Studio.
+**Current Development Version** - Advanced AI-powered queue management for South African public services.
+
+This is the **main development repository** for QueUp, featuring AI/ML integration, real-time analytics, and multi-channel access.
 
 To get started, take a look at src/app/page.tsx.
-# QueUp
+
+## QueUp
 
 **QueUp** is a smart, inclusive queue management system designed to reduce waiting times at public services by allowing users to join queues digitally, track their position in real-time, and receive notifications when it’s their turn. It is designed for South African conditions and supports multiple access methods including QR codes, kiosks, and SMS for those without smartphones.
 
@@ -20,6 +23,19 @@ Existing booking systems have several limitations:
 - Long queues cause **lost productivity** and physical strain, especially for the elderly, people with disabilities, or those traveling long distances.  
 
 QueUp addresses these challenges by providing a **flexible, transparent, and inclusive queue management solution**.
+
+---
+
+## 🚀 Current Version Notes
+
+This is **QueUp1** - the latest development version with:
+- AI/ML-powered wait time predictions
+- Real-time queue analytics
+- Multi-channel access (web, mobile, kiosks)
+- Firebase integration with Firestore
+- WhatsApp/SMS notifications
+
+**Repository**: `https://github.com/Hlomla00/QueUp1`
 
 ---
 
